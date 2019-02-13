@@ -1,1 +1,0 @@
-curl -X POST -d "api_dev_key=$PASTEBIN_KEY&api_option=paste&api_paste_code=$1" https://pastebin.com/api/api_post.php
