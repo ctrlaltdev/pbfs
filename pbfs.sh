@@ -93,34 +93,41 @@ if [ $1 = '-s' ] && [ ! -z "$2" ]
 then
     echo Retrieving master hash...
 
-    MASTERHASHHEXA="$(curl -s https://pastebin.com/raw/$2)"
-    MASTERHASH="$(echo $MASTERHASHHEXA | xxd -p -r)"
+    MASTERHASHHEXA="/tmp/masterhashhexa$2"
+    curl -s https://pastebin.com/raw/$2 > $MASTERHASHHEXA
+
+    MASTERHASH="/tmp/masterhash$2"
+    xxd -p -r $MASTERHASHHEXA > $MASTERHASH
 
     echo Retrieved
 
     echo ""
     echo Retrieving files...
 
-    FILEHEXA=""
+    TMPFILEHEXA="/tmp/hexa$2"
 
     while read -r CRUMBHASH
     do
-        CRUMB=$(echo $CRUMBHASHB64 | base64 -d)
+        CRUMB=$(echo $CRUMBHASH | base64 -d)
         CHUNK=$(curl -s -A "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.111 Safari/537.36" https://pastebin.com/raw/$CRUMB)
-        FILEHEXA="${FILEHEXA}$CHUNK"
+        echo $CHUNK >> $TMPFILEHEXA
         sleep 1
 
-    done <<< "$MASTERHASH"
+    done <<< "$(cat $MASTERHASH)"
 
     echo Files Retrieved
 
     RANDOMNAME="$(date +%s | sha256sum | base64 | head -c 32 ; echo)"
 
-    echo "$(echo $FILEHEXA | xxd -p -r)" > $RANDOMNAME
+    xxd -p -r $TMPFILEHEXA > $RANDOMNAME
 
     echo ""
 
     echo "./$RANDOMNAME created"
+
+    rm $MASTERHASHHEXA
+    rm $MASTERHASH
+    rm $TMPFILEHEXA
 
 fi
 
