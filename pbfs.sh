@@ -1,6 +1,8 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 
 set -e
+
+url="https://paste.rs/"
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
@@ -11,17 +13,9 @@ while [ -h "$SOURCE" ]; do
 done
 DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null && pwd )"
 
-if [ -s $DIR/.env ] && [ -r $DIR/.env ]
+if [ -z $1 ]
 then
-    . $DIR/.env
-else
-    echo "No .env file or not readable" >&2;
-    exit 1;
-fi
-
-if [ -z $* ]
-then
-    echo "No arguments" >&2;
+    echo "No arguments. Run pbfs -h for help" >&2;
     exit 1;
 fi
 
@@ -33,6 +27,13 @@ echo " | |    | |_) | |    ____) |";
 echo " |_|    |____/|_|   |_____/ ";
 echo "                            ";
 echo "                            ";
+
+if [ $1 = '-h' ]
+then
+    echo "$ pbfs path/to/file to upload"
+    echo "$ pbfs -s masterHash to download"
+    echo "$ pbfs -d masterHash to delete"
+fi
 
 if [ -s $1 ] && [ -r $1 ]
 then
@@ -47,7 +48,7 @@ then
     echo $1 is now $SIZE bytes
     echo ""
 
-    CHUNKS="$[ $SIZE / 40000 ]"
+    CHUNKS="$[ $SIZE / 40000 + 1 ]"
 
     echo Splitting into $CHUNKS chunks...
     split -n $CHUNKS -e $TMPFILE $FILEHASH
@@ -61,9 +62,8 @@ then
     for index in ${!CHUNKFILES[*]}
     do
         echo -ne "Uploading $[ $index + 1 ] / $CHUNKS\r"
-        url="https://pastebin.com/"
-        PASTE="$(curl -s -X POST -d "api_dev_key=$PASTEBIN_KEY&api_option=paste&api_paste_code=$(cat ${CHUNKFILES[$index]})" https://pastebin.com/api/api_post.php)"
-        CRUMBS[$index]=${PASTE#"$prefix"}
+        PASTE="$(cat ${CHUNKFILES[$index]} | curl -s --data-binary @- $url)"
+        CRUMBS[$index]=${PASTE#"$url"}
     done
     echo -ne "Uploaded $CHUNKS / $CHUNKS \r\n"
     echo ""
@@ -75,10 +75,10 @@ then
         echo $item | base64 >> $TMPHASHFILE
     done
 
-    MASTERBIN="$(curl -s -X POST -d "api_dev_key=$PASTEBIN_KEY&api_option=paste&api_paste_code=$(xxd -p -u $TMPHASHFILE | tr -d '\n')" https://pastebin.com/api/api_post.php)"
+    MASTERBIN="$(xxd -p -u $TMPHASHFILE | tr -d '\n' | curl -s --data-binary @- $url)"
 
     echo ""
-    echo This is your maste hash file: $MASTERBIN
+    echo This is your master hash file: ${MASTERBIN#"$url"}
 
     echo ""
     echo Completed!
@@ -94,7 +94,7 @@ then
     echo Retrieving master hash...
 
     MASTERHASHHEXA="/tmp/masterhashhexa$2"
-    curl -s https://pastebin.com/raw/$2 > $MASTERHASHHEXA
+    curl -s $url$2 > $MASTERHASHHEXA
 
     MASTERHASH="/tmp/masterhash$2"
     xxd -p -r $MASTERHASHHEXA > $MASTERHASH
@@ -109,7 +109,7 @@ then
     while read -r CRUMBHASH
     do
         CRUMB=$(echo $CRUMBHASH | base64 -d)
-        CHUNK=$(curl -s -A "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.111 Safari/537.36" https://pastebin.com/raw/$CRUMB)
+        CHUNK=$(curl -s $url$CRUMB)
         echo $CHUNK >> $TMPFILEHEXA
         sleep 1
 
@@ -129,6 +129,46 @@ then
     rm $MASTERHASH
     rm $TMPFILEHEXA
 
+fi
+
+if [ $1 = '-d' ] && [ ! -z "$2" ]
+then
+    echo Retrieving master hash...
+
+    MASTERHASHHEXA="/tmp/masterhashhexa$2"
+    curl -s $url$2 > $MASTERHASHHEXA
+
+    MASTERHASH="/tmp/masterhash$2"
+    xxd -p -r $MASTERHASHHEXA > $MASTERHASH
+
+    echo Retrieved
+
+    echo ""
+
+    HASHES=$(wc -l $MASTERHASH)
+    HASHES=${HASHES%" $MASTERHASH"}
+    CUR=0
+
+    while read -r CRUMBHASH
+    do
+        CRUMB=$(echo $CRUMBHASH | base64 -d)
+        CUR=$(( CUR+1 ))
+        echo "Deleting $CUR / $HASHES"
+        curl -s -X DELETE $url$CRUMB > /dev/null
+        sleep 1
+
+    done <<< "$(cat $MASTERHASH)"
+
+    echo Files Deleted
+
+    curl -s -X DELETE $url$2 > /dev/null
+
+    echo ""
+
+    echo "$2 deleted"
+
+    rm $MASTERHASHHEXA
+    rm $MASTERHASH
 fi
 
 echo "";
