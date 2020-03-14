@@ -31,6 +31,7 @@ echo "                            ";
 if [ $1 = '-h' ]
 then
     echo "$ pbfs path/to/file to upload"
+    echo "$ pbfs -l path/to/file to upload per line"
     echo "$ pbfs -s masterHash to download"
     echo "$ pbfs -d masterHash to delete"
 fi
@@ -42,7 +43,7 @@ then
     FILEHASH="$(echo $1 | base64)"
     TMPFILE="/tmp/$FILEHASH"
     TMPHASHFILE="/tmp/hashes$FILEHASH"
-    xxd -p -u $1 | tr -d '\n' > $TMPFILE
+    $xxd -p -u 1 | tr -d '\n' > $TMPFILE
 
     SIZE="$(stat --printf="%s" $TMPFILE)"
     echo $1 is now $SIZE bytes
@@ -87,6 +88,32 @@ then
     rm $TMPHASHFILE
     rm $TMPFILE
 
+fi
+
+if [ $1 = '-l' ] && [ ! -z "$2" ]
+then
+    FILEHASH="$(echo $1 | base64)"
+    TMPHASHFILE="/tmp/hashes$FILEHASH"
+    echo Reading lines...
+    index=0
+    while read LINE
+    do
+        echo -ne "Uploading line $[ $index + 1 ]\r"
+        PASTE=$(echo -n $LINE | xxd -p -u | curl -s --data-binary @- $url)
+        echo ${PASTE#"$url"} >> $TMPHASHFILE
+        index=$[ $index + 1 ]
+    done < $2
+
+    MASTERBIN="$(xxd -p -u $TMPHASHFILE | tr -d '\n' | curl -s --data-binary @- $url)"
+    # MASTERBIN="$(cat $TMPHASHFILE | curl -s --data-binary @- $url)"
+
+    echo ""
+    echo This is your master hash file: ${MASTERBIN#"$url"}
+
+    echo ""
+    echo Completed!
+
+    rm $TMPHASHFILE
 fi
 
 if [ $1 = '-s' ] && [ ! -z "$2" ]
